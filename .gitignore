@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.pyc
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Data (raw can be large/sensitive later)
+data/processed/
+
+# OS
+.DS_Store
