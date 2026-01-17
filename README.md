@@ -48,11 +48,15 @@ A linear regression model was trained using HDD and demand history features.
 This model was chosen to prioritise interpretability and alignment with operational
 decision-making processes.
 
+A RandomForest model was evaluated to capture non-linear effects between demand history and weather.
+While the linear model provided interpretability, the RandomForest achieved substantially lower in-sample error, indicating that UK gas demand exhibits meaningful non-linear dynamics driven primarily by short-term persistence.
+
 ## Results
 Model performance was evaluated using Mean Absolute Error (MAE):
 
 - Baseline (lag-1): 140.47 GWh
 - Linear Regression (with HDD): 129.74 GWh
+- RandomForest (with HDD): 86.86 GWh
 
 Incorporating weather information resulted in a meaningful reduction in forecast error
 relative to a strong baseline.
