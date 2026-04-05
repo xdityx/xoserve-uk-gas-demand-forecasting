@@ -8,6 +8,15 @@ is critical for system balancing, operational planning, and market stability.
 The objective is to evaluate whether incorporating real UK weather data improves forecast
 accuracy compared to a strong naïve baseline.
 
+## Getting Started
+Prerequisites: Python 3.12, pip
+
+Installation: `pip install -r requirements.txt`
+
+Run tests: `python -m pytest tests/ -v`
+
+Docker: `docker build -t gas-forecast . && docker run --rm gas-forecast`
+
 ## Industry Context (UK Gas & Xoserve alignment)
 UK gas operates on a gas-day basis, with demand published at multiple revision stages.
 This project uses NTS Actual D+6 demand data, which represents near-finalized actuals
