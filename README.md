@@ -17,6 +17,15 @@ Run tests: `python -m pytest tests/ -v`
 
 Docker: `docker build -t gas-forecast . && docker run --rm gas-forecast`
 
+## API
+Start the API: `uvicorn api.app:app --reload`
+
+Available endpoints:
+- `GET /health` returns a simple status response to confirm the API is running.
+- `POST /forecast` generates demand forecasts using either the ARIMA or SARIMA model.
+  Example JSON body: `{"days": 7, "model_type": "sarima"}`
+- `GET /compare` runs both ARIMA and SARIMA on the historical series and returns RMSE and MAE for each.
+
 ## Industry Context (UK Gas & Xoserve alignment)
 UK gas operates on a gas-day basis, with demand published at multiple revision stages.
 This project uses NTS Actual D+6 demand data, which represents near-finalized actuals
