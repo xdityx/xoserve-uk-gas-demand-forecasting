@@ -1,4 +1,6 @@
+fastapi
 pandas
+uvicorn
 scikit-learn
 statsmodels
 pytest
