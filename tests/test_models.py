@@ -1,9 +1,15 @@
 import pandas as pd
+import pytest
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LinearRegression
 
 from src.features import add_hdd, add_lag_features
-from src.models import train_linear_regression, train_random_forest
+from src.models import (
+    rolling_window_cv,
+    train_arima,
+    train_linear_regression,
+    train_random_forest,
+)
 
 
 def _make_training_data(rows: int = 50):
@@ -40,3 +46,28 @@ def test_train_random_forest_returns_correct_prediction_shape():
 
     assert isinstance(model, RandomForestRegressor)
     assert predictions.shape == (len(X),)
+
+
+@pytest.mark.parametrize("model_type", ["linear", "random_forest"])
+def test_rolling_window_cv_returns_mean_and_std_mae(model_type: str):
+    X, y = _make_training_data()
+
+    mean_mae, std_mae = rolling_window_cv(X, y, n_splits=3, model_type=model_type)
+
+    assert isinstance(mean_mae, float)
+    assert isinstance(std_mae, float)
+    assert mean_mae >= 0
+    assert std_mae >= 0
+
+
+def test_train_arima_returns_predictions_with_test_shape():
+    pytest.importorskip("statsmodels")
+    _, y = _make_training_data()
+    y_train = y.iloc[:-5]
+    y_test = y.iloc[-5:]
+
+    predictions = train_arima(y_train, y_test=y_test, order=(1, 1, 1))
+
+    assert isinstance(predictions, pd.Series)
+    assert predictions.shape == y_test.shape
+    assert predictions.index.equals(y_test.index)
