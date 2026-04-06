@@ -5,10 +5,12 @@ from sklearn.linear_model import LinearRegression
 
 from src.features import add_hdd, add_lag_features
 from src.models import (
+    compare_models,
     rolling_window_cv,
     train_arima,
     train_linear_regression,
     train_random_forest,
+    train_sarima,
 )
 
 
@@ -26,6 +28,15 @@ def _make_training_data(rows: int = 50):
     X = df[["hdd", "demand_lag_1", "demand_lag_7", "demand_roll_7"]]
     y = df["demand_gwh"]
     return X, y
+
+
+def _make_seasonal_series(rows: int = 70) -> pd.Series:
+    index = pd.date_range("2025-01-01", periods=rows, freq="D")
+    values = [
+        300 + (i * 0.5) + [0, 6, 12, 18, 12, 6, 0][i % 7]
+        for i in range(rows)
+    ]
+    return pd.Series(values, index=index, name="demand_gwh")
 
 
 def test_train_linear_regression_returns_correct_prediction_shape():
@@ -62,12 +73,42 @@ def test_rolling_window_cv_returns_mean_and_std_mae(model_type: str):
 
 def test_train_arima_returns_predictions_with_test_shape():
     pytest.importorskip("statsmodels")
-    _, y = _make_training_data()
-    y_train = y.iloc[:-5]
-    y_test = y.iloc[-5:]
+    y = _make_seasonal_series()
+    y_train = y.iloc[:-7]
+    y_test = y.iloc[-7:]
 
     predictions = train_arima(y_train, y_test=y_test, order=(1, 1, 1))
 
     assert isinstance(predictions, pd.Series)
     assert predictions.shape == y_test.shape
     assert predictions.index.equals(y_test.index)
+
+
+def test_train_sarima_returns_predictions_with_test_shape():
+    pytest.importorskip("statsmodels")
+    y = _make_seasonal_series()
+    y_train = y.iloc[:-7]
+    y_test = y.iloc[-7:]
+
+    predictions = train_sarima(y_train, y_test=y_test, order=(1, 1, 1))
+
+    assert isinstance(predictions, pd.Series)
+    assert predictions.shape == y_test.shape
+    assert predictions.index.equals(y_test.index)
+
+
+def test_compare_models_returns_metrics_for_arima_and_sarima():
+    pytest.importorskip("statsmodels")
+    y = _make_seasonal_series()
+    y_train = y.iloc[:-7]
+    y_test = y.iloc[-7:]
+
+    results = compare_models(y_train, y_test, seasonal_period=7)
+
+    assert set(results.keys()) == {"arima", "sarima"}
+    assert set(results["arima"].keys()) == {"rmse", "mae"}
+    assert set(results["sarima"].keys()) == {"rmse", "mae"}
+    assert results["arima"]["rmse"] >= 0
+    assert results["arima"]["mae"] >= 0
+    assert results["sarima"]["rmse"] >= 0
+    assert results["sarima"]["mae"] >= 0

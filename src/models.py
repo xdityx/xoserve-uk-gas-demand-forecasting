@@ -1,6 +1,7 @@
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_absolute_error
+from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import TimeSeriesSplit
 import pandas as pd
 
@@ -81,4 +82,63 @@ def train_arima(
         return pd.Series(predictions, index=y_test.index, name="arima_prediction")
 
     return pd.Series(predictions, name="arima_prediction")
+
+
+def train_sarima(
+    y_train: pd.Series,
+    y_test: pd.Series | None = None,
+    order: tuple[int, int, int] = (1, 1, 1),
+    steps: int | None = None,
+    seasonal_period: int = 7,
+    seasonal_order: tuple[int, int, int, int] | None = None,
+) -> pd.Series:
+    from statsmodels.tsa.statespace.sarimax import SARIMAX
+
+    if y_test is None and steps is None:
+        raise ValueError("Provide y_test or steps to generate SARIMA forecasts")
+
+    forecast_steps = len(y_test) if y_test is not None else steps
+    resolved_seasonal_order = seasonal_order or (1, 0, 1, seasonal_period)
+    fitted_model = SARIMAX(
+        y_train,
+        order=order,
+        seasonal_order=resolved_seasonal_order,
+        enforce_stationarity=False,
+        enforce_invertibility=False,
+    ).fit(disp=False)
+    predictions = fitted_model.forecast(steps=forecast_steps)
+
+    if y_test is not None:
+        return pd.Series(predictions, index=y_test.index, name="sarima_prediction")
+
+    return pd.Series(predictions, name="sarima_prediction")
+
+
+def compare_models(
+    y_train: pd.Series,
+    y_test: pd.Series,
+    arima_order: tuple[int, int, int] = (1, 1, 1),
+    sarima_order: tuple[int, int, int] = (1, 1, 1),
+    seasonal_period: int = 7,
+    seasonal_order: tuple[int, int, int, int] | None = None,
+) -> dict[str, dict[str, float]]:
+    arima_predictions = train_arima(y_train, y_test=y_test, order=arima_order)
+    sarima_predictions = train_sarima(
+        y_train,
+        y_test=y_test,
+        order=sarima_order,
+        seasonal_period=seasonal_period,
+        seasonal_order=seasonal_order,
+    )
+
+    return {
+        "arima": {
+            "rmse": float(mean_squared_error(y_test, arima_predictions) ** 0.5),
+            "mae": float(mean_absolute_error(y_test, arima_predictions)),
+        },
+        "sarima": {
+            "rmse": float(mean_squared_error(y_test, sarima_predictions) ** 0.5),
+            "mae": float(mean_absolute_error(y_test, sarima_predictions)),
+        },
+    }
 
