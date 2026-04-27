@@ -1,3 +1,10 @@
+"""
+Module: Gas demand forecasting models and evaluation helpers.
+
+This module groups baseline, machine learning, and time-series models used to
+benchmark short-term UK NTS gas demand under different forecasting assumptions.
+"""
+
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_absolute_error
@@ -7,16 +14,54 @@ import pandas as pd
 
 
 def baseline_predict(df: pd.DataFrame) -> pd.Series:
+    """
+    Return a naive persistence forecast from prior-day demand.
+
+    Lag-1 demand is a strong benchmark in gas forecasting because short-term
+    system demand often changes gradually from one day to the next.
+
+    Args:
+        df: Feature DataFrame containing a ``demand_lag_1`` column.
+
+    Returns:
+        Series of baseline demand forecasts.
+    """
     return df["demand_lag_1"]
 
 
 def train_linear_regression(X: pd.DataFrame, y: pd.Series):
+    """
+    Fit an interpretable linear demand model.
+
+    Linear regression provides a transparent benchmark for understanding how
+    weather and recent demand history relate to NTS gas demand.
+
+    Args:
+        X: Training feature matrix.
+        y: Target demand series.
+
+    Returns:
+        Fitted ``LinearRegression`` model.
+    """
     model = LinearRegression()
     model.fit(X, y)
     return model
 
 
 def train_random_forest(X: pd.DataFrame, y: pd.Series):
+    """
+    Fit a non-linear tree ensemble for demand forecasting.
+
+    Random forests help capture interactions between weather and persistence
+    features when gas demand dynamics are not well described linearly.
+
+    Args:
+        X: Training feature matrix.
+        y: Target demand series.
+
+    Returns:
+        Fitted ``RandomForestRegressor`` model.
+    """
     rf = RandomForestRegressor(
         n_estimators=200,
         max_depth=8,
@@ -29,6 +74,21 @@ def train_random_forest(X: pd.DataFrame, y: pd.Series):
 
 
 def _build_model(model_type: str):
+    """
+    Construct a supported model for rolling time-series validation.
+
+    Centralising model creation keeps cross-validation aligned with the same
+    benchmark model definitions used elsewhere in the project.
+
+    Args:
+        model_type: Model family name, either ``linear`` or ``random_forest``.
+
+    Returns:
+        Unfitted sklearn estimator matching the requested model type.
+
+    Raises:
+        ValueError: If the requested model type is not supported.
+    """
     if model_type == "linear":
         return LinearRegression()
     if model_type == "random_forest":
@@ -47,6 +107,21 @@ def rolling_window_cv(
     n_splits: int = 5,
     model_type: str = "linear",
 ) -> tuple[float, float]:
+    """
+    Score a model using expanding time-series cross-validation.
+
+    Time-ordered validation is more realistic for gas forecasting because each
+    fold trains only on past observations before evaluating future demand.
+
+    Args:
+        X: Feature matrix ordered by time.
+        y: Target demand series ordered by time.
+        n_splits: Number of time-series folds. Defaults to 5.
+        model_type: Model family to evaluate. Defaults to ``linear``.
+
+    Returns:
+        Tuple of mean MAE and standard deviation of MAE across folds.
+    """
     splitter = TimeSeriesSplit(n_splits=n_splits)
     mae_scores = []
 
@@ -69,6 +144,24 @@ def train_arima(
     order: tuple[int, int, int] = (1, 1, 1),
     steps: int | None = None,
 ) -> pd.Series:
+    """
+    Fit an ARIMA model and forecast future gas demand.
+
+    ARIMA provides a univariate baseline for demand patterns driven mostly by
+    historical structure rather than explicit weather covariates.
+
+    Args:
+        y_train: Historical demand series used for fitting.
+        y_test: Optional holdout series used to align forecast indices.
+        order: Non-seasonal ARIMA order. Defaults to ``(1, 1, 1)``.
+        steps: Forecast horizon when no test series is provided.
+
+    Returns:
+        Series of ARIMA forecasts for the requested horizon.
+
+    Raises:
+        ValueError: If neither ``y_test`` nor ``steps`` is provided.
+    """
     from statsmodels.tsa.arima.model import ARIMA
 
     if y_test is None and steps is None:
@@ -92,6 +185,26 @@ def train_sarima(
     seasonal_period: int = 7,
     seasonal_order: tuple[int, int, int, int] | None = None,
 ) -> pd.Series:
+    """
+    Fit a seasonal ARIMA model and forecast future gas demand.
+
+    SARIMA extends the univariate baseline with weekly seasonality, which is a
+    useful pattern in operational gas demand over successive gas days.
+
+    Args:
+        y_train: Historical demand series used for fitting.
+        y_test: Optional holdout series used to align forecast indices.
+        order: Non-seasonal ARIMA order. Defaults to ``(1, 1, 1)``.
+        steps: Forecast horizon when no test series is provided.
+        seasonal_period: Seasonal cycle length in days. Defaults to 7.
+        seasonal_order: Optional full seasonal order override.
+
+    Returns:
+        Series of SARIMA forecasts for the requested horizon.
+
+    Raises:
+        ValueError: If neither ``y_test`` nor ``steps`` is provided.
+    """
     from statsmodels.tsa.statespace.sarimax import SARIMAX
 
     if y_test is None and steps is None:
@@ -122,6 +235,23 @@ def compare_models(
     seasonal_period: int = 7,
     seasonal_order: tuple[int, int, int, int] | None = None,
 ) -> dict[str, dict[str, float]]:
+    """
+    Compare ARIMA and SARIMA performance on the same holdout window.
+
+    Side-by-side error summaries make it easier to judge whether adding weekly
+    seasonality improves demand forecast accuracy in this dataset.
+
+    Args:
+        y_train: Historical demand series used for fitting.
+        y_test: Holdout demand series used for evaluation.
+        arima_order: Non-seasonal order for the ARIMA model.
+        sarima_order: Non-seasonal order for the SARIMA model.
+        seasonal_period: Seasonal cycle length in days. Defaults to 7.
+        seasonal_order: Optional full seasonal order override.
+
+    Returns:
+        Nested dictionary with RMSE and MAE for ARIMA and SARIMA.
+    """
     arima_predictions = train_arima(y_train, y_test=y_test, order=arima_order)
     sarima_predictions = train_sarima(
         y_train,
