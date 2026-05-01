@@ -1,5 +1,24 @@
 # UK Gas Demand Forecasting (NTS) – Weather-Aware Model
 
+[![CI](https://github.com/xdityx/xoserve-uk-gas-demand-forecasting/actions/workflows/ci.yml/badge.svg)](https://github.com/xdityx/xoserve-uk-gas-demand-forecasting/actions/workflows/ci.yml)
+
+## 🚀 Live API
+
+The gas demand forecasting API is deployed and available at:
+```
+https://gas-forecast-xoserve.onrender.com
+```
+
+**Interactive API Documentation:** https://gas-forecast-xoserve.onrender.com/docs
+
+Example usage:
+```bash
+curl -X POST https://gas-forecast-xoserve.onrender.com/forecast \
+  -H "Content-Type: application/json" \
+  -d '{"days": 7, "model_type": "sarima"}'
+```
+
+
 ## Problem Statement
 This project forecasts daily UK gas demand on the National Transmission System (NTS) using
 historical demand data and weather information. Accurate short-term gas demand forecasting
