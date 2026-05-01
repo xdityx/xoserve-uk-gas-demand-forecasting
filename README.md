@@ -6,18 +6,17 @@
 
 The gas demand forecasting API is deployed and available at:
 ```
-https://gas-forecast-xoserve.onrender.com
+https://xoserve-uk-gas-demand-forecasting-1.onrender.com
 ```
 
-**Interactive API Documentation:** https://gas-forecast-xoserve.onrender.com/docs
+**Interactive API Documentation:** https://xoserve-uk-gas-demand-forecasting-1.onrender.com/docs
 
 Example usage:
 ```bash
-curl -X POST https://gas-forecast-xoserve.onrender.com/forecast \
+curl -X POST https://xoserve-uk-gas-demand-forecasting-1.onrender.com/forecast \
   -H "Content-Type: application/json" \
   -d '{"days": 7, "model_type": "sarima"}'
 ```
-
 
 ## Problem Statement
 This project forecasts daily UK gas demand on the National Transmission System (NTS) using
@@ -106,7 +105,30 @@ relative to a strong baseline.
 ## Limitations
 - Temperature is represented using a national proxy rather than spatially weighted demand.
 - No explicit calendar effects (e.g. holidays) were modeled.
-- Models were evaluated in-sample and are intended for analytical demonstration.
+
+## 📊 Out-of-Sample Validation
+
+Models are evaluated using **TimeSeriesSplit cross-validation** with 5 folds to ensure robust out-of-sample (OOS) performance. This time-ordered splitting prevents look-ahead bias and provides realistic estimates of model performance on future data.
+
+**Validation Metrics:**
+- Mean Absolute Error (MAE): measures average forecast error in GWh
+- Root Mean Squared Error (RMSE): penalizes larger errors more heavily
+
+To run OOS validation on your data:
+```python
+from src.models import time_series_cv_results
+from src.features import add_hdd, add_lag_features
+
+# Load and prepare your data (df with 'demand_gwh' and 'mean_temp')
+df = add_hdd(df)
+df = add_lag_features(df).dropna()
+
+X = df[["hdd", "demand_lag_1", "demand_lag_7", "demand_roll_7"]]
+y = df["demand_gwh"]
+
+results = time_series_cv_results(X, y, n_splits=5, model_type="linear")
+# Returns: {'rmse': [fold_1_rmse, ...], 'mae': [fold_1_mae, ...]}
+```
 
 ## How This Could Be Extended
 Future extensions could include:
@@ -114,4 +136,3 @@ Future extensions could include:
 - Calendar and holiday effects
 - Tree-based models for non-linear interactions
 - Probabilistic forecasting and uncertainty bounds
-
