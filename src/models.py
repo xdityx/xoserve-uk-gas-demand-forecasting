@@ -272,3 +272,45 @@ def compare_models(
         },
     }
 
+
+
+def time_series_cv_results(
+    X: pd.DataFrame,
+    y: pd.Series,
+    n_splits: int = 5,
+    model_type: str = "linear",
+) -> dict[str, list[float]]:
+    """
+    Run TimeSeriesSplit cross-validation and return RMSE and MAE for each fold.
+
+    Out-of-sample validation using time-ordered splits ensures models are
+    evaluated only on future observations not seen during training.
+
+    Args:
+        X: Feature matrix ordered by time.
+        y: Target demand series ordered by time.
+        n_splits: Number of time-series folds. Defaults to 5.
+        model_type: Model family to evaluate. Defaults to ``linear``.
+
+    Returns:
+        Dictionary with 'rmse' and 'mae' lists containing error for each fold.
+    """
+    splitter = TimeSeriesSplit(n_splits=n_splits)
+    rmse_scores = []
+    mae_scores = []
+
+    for train_idx, test_idx in splitter.split(X):
+        X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
+        y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
+
+        model = _build_model(model_type)
+        model.fit(X_train, y_train)
+        predictions = model.predict(X_test)
+
+        rmse_scores.append(float(mean_squared_error(y_test, predictions) ** 0.5))
+        mae_scores.append(float(mean_absolute_error(y_test, predictions)))
+
+    return {
+        "rmse": rmse_scores,
+        "mae": mae_scores,
+    }
