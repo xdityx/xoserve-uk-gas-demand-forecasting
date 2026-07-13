@@ -2,13 +2,12 @@
 __pycache__/
 *.pyc
 .env
-*.csv
 *.parquet
 
 # Jupyter
 .ipynb_checkpoints/
 
-# Data (raw can be large/sensitive later)
+# Data (raw CSV files needed for API, processed data ignored)
 data/processed/
 
 # OS

@@ -64,3 +64,33 @@ def load_weather(path: str) -> pd.DataFrame:
     df["date"] = pd.to_datetime(df["date"])
 
     return df[["date", "mean_temp"]]
+
+
+def load_model_data(demand_path: str, weather_path: str) -> pd.DataFrame:
+    """Load and align demand and weather observations by gas day.
+
+    The returned frame is sorted chronologically and contains only dates for
+    which both finalized demand and observed temperature are available.
+
+    Args:
+        demand_path: Path to the National Gas demand CSV export.
+        weather_path: Path to the Met Office HadCET daily text file.
+
+    Returns:
+        Chronological DataFrame containing demand and mean temperature.
+
+    Raises:
+        ValueError: If the sources have no overlapping dates or contain
+            duplicate aligned gas days.
+    """
+    demand = load_demand(demand_path)
+    weather = load_weather(weather_path)
+    merged = demand.merge(weather, on="date", how="inner").sort_values("date")
+    merged = merged.reset_index(drop=True)
+
+    if merged.empty:
+        raise ValueError("Demand and weather data have no overlapping dates")
+    if merged["date"].duplicated().any():
+        raise ValueError("Aligned model data contains duplicate dates")
+
+    return merged

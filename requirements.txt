@@ -1,6 +1,7 @@
-fastapi
-pandas
-uvicorn
-scikit-learn
-statsmodels
-pytest
+fastapi==0.128.8
+pandas==2.3.3
+pydantic==2.13.4
+uvicorn==0.40.0
+scikit-learn==1.8.0
+statsmodels==0.14.6
+pytest==7.4.3

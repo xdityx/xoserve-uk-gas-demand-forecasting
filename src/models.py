@@ -5,12 +5,20 @@ This module groups baseline, machine learning, and time-series models used to
 benchmark short-term UK NTS gas demand under different forecasting assumptions.
 """
 
+from collections.abc import Sequence
+from typing import Literal
+
+import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_absolute_error
 from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import TimeSeriesSplit
-import pandas as pd
+
+from src.features import add_hdd, add_lag_features
+
+
+WEATHER_FEATURES = ["hdd", "demand_lag_1", "demand_lag_7", "demand_roll_7"]
 
 
 def baseline_predict(df: pd.DataFrame) -> pd.Series:
@@ -66,7 +74,7 @@ def train_random_forest(X: pd.DataFrame, y: pd.Series):
         n_estimators=200,
         max_depth=8,
         random_state=42,
-        n_jobs=-1,
+        n_jobs=1,
     )
 
     rf.fit(X, y)
@@ -96,7 +104,7 @@ def _build_model(model_type: str):
             n_estimators=200,
             max_depth=8,
             random_state=42,
-            n_jobs=-1,
+            n_jobs=1,
         )
     raise ValueError("model_type must be 'linear' or 'random_forest'")
 
@@ -218,7 +226,7 @@ def train_sarima(
         seasonal_order=resolved_seasonal_order,
         enforce_stationarity=False,
         enforce_invertibility=False,
-    ).fit(disp=False)
+    ).fit(disp=False, maxiter=200)
     predictions = fitted_model.forecast(steps=forecast_steps)
 
     if y_test is not None:
@@ -273,7 +281,6 @@ def compare_models(
     }
 
 
-
 def time_series_cv_results(
     X: pd.DataFrame,
     y: pd.Series,
@@ -314,3 +321,242 @@ def time_series_cv_results(
         "rmse": rmse_scores,
         "mae": mae_scores,
     }
+
+
+def _prepare_weather_history(history: pd.DataFrame) -> pd.DataFrame:
+    """Validate and chronologically order weather-aware model history."""
+    required = {"date", "demand_gwh", "mean_temp"}
+    missing = required.difference(history.columns)
+    if missing:
+        raise ValueError(f"History is missing required columns: {sorted(missing)}")
+
+    ordered = history[["date", "demand_gwh", "mean_temp"]].copy()
+    ordered["date"] = pd.to_datetime(ordered["date"])
+    ordered = ordered.sort_values("date").reset_index(drop=True)
+
+    if ordered.empty:
+        raise ValueError("History is empty")
+    if ordered[["date", "demand_gwh", "mean_temp"]].isna().any().any():
+        raise ValueError("History contains missing dates, demand, or temperature")
+    if ordered["date"].duplicated().any():
+        raise ValueError("History contains duplicate dates")
+
+    expected_dates = pd.date_range(
+        ordered["date"].iloc[0],
+        ordered["date"].iloc[-1],
+        freq="D",
+    )
+    if len(expected_dates) != len(ordered):
+        raise ValueError("History must contain an uninterrupted daily series")
+    if len(ordered) < 15:
+        raise ValueError("At least 15 daily observations are required")
+
+    return ordered
+
+
+def forecast_weather_model(
+    history: pd.DataFrame,
+    future_temperatures: Sequence[float],
+    model_type: Literal["linear", "random_forest"] = "linear",
+    alpha: float = 0.05,
+) -> pd.DataFrame:
+    """Generate a recursive weather-aware multi-day demand forecast.
+
+    Lagged and rolling features are rebuilt after every prediction, so future
+    targets are never used as inputs. Future temperatures must be supplied by
+    the caller because observed HadCET values are not weather forecasts.
+
+    The interval is an empirical residual interval from the fitted training
+    sample. It is useful as a transparent uncertainty indicator, but is not a
+    calibrated probabilistic forecast.
+    """
+    if not 0 < alpha < 1:
+        raise ValueError("alpha must be between 0 and 1")
+    if model_type not in {"linear", "random_forest"}:
+        raise ValueError("model_type must be 'linear' or 'random_forest'")
+
+    temperatures = pd.Series(list(future_temperatures), dtype=float)
+    if temperatures.empty:
+        raise ValueError("At least one future temperature is required")
+    if temperatures.isna().any():
+        raise ValueError("Future temperatures cannot contain missing values")
+
+    ordered = _prepare_weather_history(history)
+    training = add_lag_features(add_hdd(ordered)).dropna().reset_index(drop=True)
+    X_train = training[WEATHER_FEATURES]
+    y_train = training["demand_gwh"]
+
+    model = _build_model(model_type)
+    model.fit(X_train, y_train)
+    fitted = pd.Series(model.predict(X_train), index=y_train.index)
+    interval_radius = float((y_train - fitted).abs().quantile(1 - alpha))
+
+    demand_history = ordered["demand_gwh"].astype(float).tolist()
+    forecast_dates = pd.date_range(
+        ordered["date"].iloc[-1] + pd.Timedelta(days=1),
+        periods=len(temperatures),
+        freq="D",
+    )
+    rows = []
+
+    for forecast_date, mean_temp in zip(forecast_dates, temperatures):
+        features = pd.DataFrame(
+            [
+                {
+                    "hdd": max(15.5 - float(mean_temp), 0.0),
+                    "demand_lag_1": demand_history[-1],
+                    "demand_lag_7": demand_history[-7],
+                    "demand_roll_7": sum(demand_history[-7:]) / 7,
+                }
+            ],
+            columns=WEATHER_FEATURES,
+        )
+        prediction = max(float(model.predict(features)[0]), 0.0)
+        rows.append(
+            {
+                "date": forecast_date,
+                "prediction": prediction,
+                "lower": max(prediction - interval_radius, 0.0),
+                "upper": prediction + interval_radius,
+                "mean_temp": float(mean_temp),
+            }
+        )
+        demand_history.append(prediction)
+
+    return pd.DataFrame(rows)
+
+
+def forecast_time_series(
+    y_train: pd.Series,
+    steps: int,
+    model_type: Literal["arima", "sarima"] = "sarima",
+    alpha: float = 0.05,
+    order: tuple[int, int, int] = (1, 1, 1),
+    seasonal_period: int = 7,
+) -> pd.DataFrame:
+    """Forecast ARIMA or SARIMA demand with model-based intervals and dates."""
+    if steps <= 0:
+        raise ValueError("steps must be positive")
+    if not 0 < alpha < 1:
+        raise ValueError("alpha must be between 0 and 1")
+    if model_type not in {"arima", "sarima"}:
+        raise ValueError("model_type must be 'arima' or 'sarima'")
+
+    series = y_train.sort_index().astype(float)
+    if series.empty:
+        raise ValueError("Training series is empty")
+
+    if model_type == "arima":
+        from statsmodels.tsa.arima.model import ARIMA
+
+        fitted_model = ARIMA(series, order=order).fit()
+    else:
+        from statsmodels.tsa.statespace.sarimax import SARIMAX
+
+        fitted_model = SARIMAX(
+            series,
+            order=order,
+            seasonal_order=(1, 0, 1, seasonal_period),
+            enforce_stationarity=False,
+            enforce_invertibility=False,
+        ).fit(disp=False, maxiter=200)
+
+    forecast_result = fitted_model.get_forecast(steps=steps)
+    predictions = forecast_result.predicted_mean
+    confidence = forecast_result.conf_int(alpha=alpha)
+    start_date = pd.Timestamp(series.index[-1]) + pd.Timedelta(days=1)
+
+    return pd.DataFrame(
+        {
+            "date": pd.date_range(start_date, periods=steps, freq="D"),
+            "prediction": predictions.to_numpy(dtype=float),
+            "lower": confidence.iloc[:, 0].to_numpy(dtype=float).clip(min=0),
+            "upper": confidence.iloc[:, 1].to_numpy(dtype=float),
+        }
+    )
+
+
+def rolling_origin_backtest(
+    history: pd.DataFrame,
+    model_type: Literal[
+        "persistence", "linear", "random_forest", "arima", "sarima"
+    ],
+    horizon: int = 14,
+    n_splits: int = 5,
+) -> dict[str, object]:
+    """Evaluate a model with expanding, fixed-horizon recursive backtests.
+
+    Weather-aware models receive the realized temperature for each holdout day.
+    Their scores therefore isolate demand-model quality and should be treated as
+    an upper bound until real weather-forecast errors are included.
+    """
+    if horizon <= 0 or n_splits <= 0:
+        raise ValueError("horizon and n_splits must be positive")
+    supported = {"persistence", "linear", "random_forest", "arima", "sarima"}
+    if model_type not in supported:
+        raise ValueError(f"Unsupported model_type: {model_type}")
+
+    ordered = _prepare_weather_history(history)
+    required_rows = 15 + horizon * n_splits
+    if len(ordered) < required_rows:
+        raise ValueError(
+            f"At least {required_rows} rows are required for this backtest"
+        )
+
+    first_test_start = len(ordered) - (horizon * n_splits)
+    mae_scores: list[float] = []
+    rmse_scores: list[float] = []
+    folds = []
+
+    for fold_index in range(n_splits):
+        test_start = first_test_start + fold_index * horizon
+        test_end = test_start + horizon
+        train = ordered.iloc[:test_start].copy()
+        test = ordered.iloc[test_start:test_end].copy()
+        y_test = test["demand_gwh"]
+
+        if model_type == "persistence":
+            predictions = pd.Series(
+                [float(train["demand_gwh"].iloc[-1])] * horizon,
+                index=y_test.index,
+            )
+        elif model_type in {"linear", "random_forest"}:
+            forecast = forecast_weather_model(
+                train,
+                test["mean_temp"].tolist(),
+                model_type=model_type,
+            )
+            predictions = pd.Series(forecast["prediction"].to_numpy(), index=y_test.index)
+        else:
+            y_train = train.set_index("date")["demand_gwh"].asfreq("D")
+            forecast = forecast_time_series(
+                y_train,
+                steps=horizon,
+                model_type=model_type,
+            )
+            predictions = pd.Series(forecast["prediction"].to_numpy(), index=y_test.index)
+
+        mae_value = float(mean_absolute_error(y_test, predictions))
+        rmse_value = float(mean_squared_error(y_test, predictions) ** 0.5)
+        mae_scores.append(mae_value)
+        rmse_scores.append(rmse_value)
+        folds.append(
+            {
+                "fold": fold_index + 1,
+                "train_through": train["date"].iloc[-1].date().isoformat(),
+                "test_from": test["date"].iloc[0].date().isoformat(),
+                "test_through": test["date"].iloc[-1].date().isoformat(),
+                "mae": mae_value,
+                "rmse": rmse_value,
+            }
+        )
+
+    return {
+        "mae": mae_scores,
+        "rmse": rmse_scores,
+        "mean_mae": float(pd.Series(mae_scores).mean()),
+        "std_mae": float(pd.Series(mae_scores).std(ddof=0)),
+        "mean_rmse": float(pd.Series(rmse_scores).mean()),
+        "folds": folds,
+    }
+

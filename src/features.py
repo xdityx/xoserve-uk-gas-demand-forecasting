@@ -43,5 +43,8 @@ def add_lag_features(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     df["demand_lag_1"] = df["demand_gwh"].shift(1)
     df["demand_lag_7"] = df["demand_gwh"].shift(7)
-    df["demand_roll_7"] = df["demand_gwh"].rolling(7).mean()
+    # Shift before rolling so the feature for day t contains only information
+    # that was available at the end of day t-1. Rolling the unshifted target
+    # leaks the value being predicted into the feature matrix.
+    df["demand_roll_7"] = df["demand_gwh"].shift(1).rolling(7).mean()
     return df
