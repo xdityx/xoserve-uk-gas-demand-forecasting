@@ -1,97 +1,105 @@
 #!/usr/bin/env python
-"""Generate out-of-sample validation results using TimeSeriesSplit."""
+"""Generate fixed-horizon recursive out-of-sample validation results."""
 
 import json
+import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pandas as pd
 
-from src.models import time_series_cv_results
-from src.features import add_hdd, add_lag_features
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from src.data_loader import load_model_data  # noqa: E402
+from src.models import rolling_origin_backtest  # noqa: E402
 
 
-def load_or_create_data():
-    """Load real demand data or create synthetic data for validation."""
-    data_path = Path(__file__).resolve().parents[1] / "data" / "raw" / "uk_gas_demand_daily.csv"
+def load_validation_data() -> pd.DataFrame:
+    """Load aligned real demand and temperature observations."""
+    demand_path = PROJECT_ROOT / "data" / "raw" / "uk_gas_demand_daily.csv"
+    weather_path = PROJECT_ROOT / "data" / "raw" / "uk_temperature_daily.csv"
 
-    if data_path.exists():
-        from src.data_loader import load_demand
+    if not demand_path.exists() or not weather_path.exists():
+        raise FileNotFoundError(
+            "Validation requires both raw data files. "
+            "Run python scripts/update_data.py first."
+        )
 
-        demand_df = load_demand(str(data_path)).sort_values("date")
-        if demand_df.empty:
-            raise ValueError("Demand data is empty")
-
-        demand_series = demand_df.set_index("date")["demand_gwh"]
-
-        weather_path = Path(__file__).resolve().parents[1] / "data" / "raw" / "uk_weather_daily.csv"
-        if weather_path.exists():
-            from src.data_loader import load_weather
-
-            weather_df = load_weather(str(weather_path)).sort_values("date")
-            df = demand_df.merge(weather_df, on="date", how="inner")
-        else:
-            df = demand_df
-    else:
-        print("Data files not found. Using synthetic data for demonstration...")
-        dates = pd.date_range("2024-01-01", periods=365, freq="D")
-        df = pd.DataFrame({
-            "date": dates,
-            "demand_gwh": [200 + (i * 0.1) + (i % 7) * 5 for i in range(365)],
-            "mean_temp": [5 + (i % 365 / 365) * 15 for i in range(365)],
-        })
-
-    return df
+    return load_model_data(str(demand_path), str(weather_path))
 
 
-def generate_oos_results(df: pd.DataFrame) -> dict:
-    """Generate OOS validation results for linear and random forest models."""
-    df_with_features = add_hdd(df.copy())
-    df_with_features = add_lag_features(df_with_features).dropna().reset_index(drop=True)
-
-    X = df_with_features[["hdd", "demand_lag_1", "demand_lag_7", "demand_roll_7"]]
-    y = df_with_features["demand_gwh"]
-
-    linear_results = time_series_cv_results(X, y, n_splits=5, model_type="linear")
-    rf_results = time_series_cv_results(X, y, n_splits=5, model_type="random_forest")
-
-    results = {
-        "n_folds": 5,
-        "n_samples": len(X),
-        "models": {
-            "linear_regression": {
-                "rmse": linear_results["rmse"],
-                "mae": linear_results["mae"],
-            },
-            "random_forest": {
-                "rmse": rf_results["rmse"],
-                "mae": rf_results["mae"],
-            },
-        },
+def generate_oos_results(
+    df: pd.DataFrame,
+    horizon: int = 14,
+    n_splits: int = 5,
+) -> dict:
+    """Generate comparable recursive OOS results for every served model."""
+    model_names = [
+        "persistence",
+        "linear",
+        "random_forest",
+        "arima",
+        "sarima",
+    ]
+    model_results = {
+        model_name: rolling_origin_backtest(
+            df,
+            model_type=model_name,
+            horizon=horizon,
+            n_splits=n_splits,
+        )
+        for model_name in model_names
     }
 
-    return results
+    return {
+        "generated_at": datetime.now(UTC).isoformat(),
+        "data_from": df["date"].min().date().isoformat(),
+        "data_through": df["date"].max().date().isoformat(),
+        "n_samples": len(df),
+        "evaluation": {
+            "strategy": "expanding rolling origin",
+            "horizon_days": horizon,
+            "n_splits": n_splits,
+            "recursive_lags": True,
+            "weather_assumption": (
+                "Weather-aware holdouts use realized temperatures, so their "
+                "scores exclude weather-forecast error."
+            ),
+        },
+        "models": model_results,
+    }
 
 
 def save_results(results: dict, output_path: Path) -> None:
-    """Save OOS results to JSON file."""
+    """Save OOS results to JSON."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8") as report_file:
+        json.dump(results, report_file, indent=2)
+        report_file.write("\n")
 
-    with open(output_path, "w") as f:
-        json.dump(results, f, indent=2)
-
-    print(f"OOS validation results saved to {output_path}")
+    relative_path = output_path.relative_to(PROJECT_ROOT)
+    print(f"OOS validation results saved to {relative_path}")
 
 
-def main():
-    """Main entry point."""
-    df = load_or_create_data()
-    results = generate_oos_results(df)
-
-    output_path = Path(__file__).resolve().parents[1] / "reports" / "oos_results.json"
+def main() -> None:
+    """Run validation and write the report artifact."""
+    results = generate_oos_results(load_validation_data())
+    output_path = PROJECT_ROOT / "reports" / "oos_results.json"
     save_results(results, output_path)
 
-    print("\n📊 Out-of-Sample Validation Results:")
-    print(json.dumps(results, indent=2))
+    print("\nOut-of-sample validation summary:")
+    for model_name, metrics in results["models"].items():
+        print(
+            f"{model_name:>13}: "
+            f"MAE={metrics['mean_mae']:.2f} GWh, "
+            f"RMSE={metrics['mean_rmse']:.2f} GWh"
+        )
 
 
 if __name__ == "__main__":

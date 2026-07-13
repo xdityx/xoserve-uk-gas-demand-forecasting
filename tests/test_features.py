@@ -36,3 +36,12 @@ def test_add_lag_features_have_no_nans_after_warmup_window():
     result = add_lag_features(df).iloc[7:]
 
     assert not result[["demand_lag_1", "demand_lag_7", "demand_roll_7"]].isna().any().any()
+
+
+def test_add_lag_features_rolling_mean_excludes_current_target():
+    df = _make_feature_frame(rows=10)
+
+    result = add_lag_features(df)
+
+    expected = df.loc[:6, "demand_gwh"].mean()
+    assert result.loc[7, "demand_roll_7"] == expected
