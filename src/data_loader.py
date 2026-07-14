@@ -1,88 +1,122 @@
-"""
-Module: Gas demand data loading utilities.
+"""Gas-demand and weather loading utilities."""
 
-This module standardises raw UK NTS gas demand and weather inputs so downstream
-forecasting code works with consistent daily time series for model training.
-"""
+from pathlib import Path
 
 import pandas as pd
 
 
-def load_demand(path: str) -> pd.DataFrame:
-    """
-    Load and standardise daily UK NTS demand observations.
+DEMAND_TO_GWH = 11.078
+FINAL_DEMAND_ITEM = "Demand Actual, NTS, D+6"
+PROVISIONAL_DEMAND_ITEM = "Demand Actual, NTS, D+1"
 
-    The loader keeps the latest D+6 publication for each gas day so modelling
-    uses a stable actuals series rather than multiple interim revisions.
 
-    Args:
-        path: Path to the raw National Gas demand CSV export.
-
-    Returns:
-        DataFrame with daily dates, demand in mscm, and converted demand in GWh.
-    """
+def _load_demand_publication(
+    path: str,
+    data_item: str,
+    actual_vintage: str,
+) -> pd.DataFrame:
+    """Load the latest publication of one NTS actual-demand series."""
     df = pd.read_csv(
         path,
         parse_dates=["Applicable For", "Generated Time"],
-        dayfirst=True
+        dayfirst=True,
     )
+    df = df[df["Data Item"] == data_item].copy()
+    if df.empty:
+        raise ValueError(f"No {data_item} records found in {path}")
 
-    # Keep only NTS Actual D+6
-    df = df[df["Data Item"] == "Demand Actual, NTS, D+6"]
-
-    # For each gas day, keep latest published value
+    df["Value"] = pd.to_numeric(df["Value"], errors="raise")
     df = (
         df.sort_values("Generated Time")
-          .groupby("Applicable For", as_index=False)
-          .last()
+        .groupby("Applicable For", as_index=False)
+        .last()
+    )
+    df = df.rename(
+        columns={
+            "Applicable For": "date",
+            "Value": "demand_mscm",
+            "Generated Time": "published_at",
+        }
+    )
+    df["date"] = pd.to_datetime(df["date"])
+    df["demand_gwh"] = df["demand_mscm"] * DEMAND_TO_GWH
+    df["actual_vintage"] = actual_vintage
+    return df[
+        [
+            "date",
+            "demand_mscm",
+            "demand_gwh",
+            "actual_vintage",
+            "published_at",
+        ]
+    ].sort_values("date").reset_index(drop=True)
+
+
+def load_demand(path: str) -> pd.DataFrame:
+    """Load the latest finalized D+6 NTS demand value for every gas day."""
+    demand = _load_demand_publication(path, FINAL_DEMAND_ITEM, "D+6")
+    return demand[["date", "demand_mscm", "demand_gwh"]]
+
+
+def load_provisional_demand(path: str) -> pd.DataFrame:
+    """Load the latest provisional D+1 NTS demand value for every gas day."""
+    return _load_demand_publication(path, PROVISIONAL_DEMAND_ITEM, "D+1")
+
+
+def load_operational_demand(
+    finalized_path: str,
+    provisional_path: str,
+) -> pd.DataFrame:
+    """Overlay D+1 observations onto D+6 history, preferring finalized values.
+
+    D+6 remains authoritative for every overlapping gas day. D+1 is used only
+    where a finalized observation is not yet available, reducing the live
+    forecast data gap without contaminating historical backtests.
+    """
+    finalized = _load_demand_publication(
+        finalized_path,
+        FINAL_DEMAND_ITEM,
+        "D+6",
+    )
+    if not Path(provisional_path).exists():
+        return finalized
+
+    provisional = load_provisional_demand(provisional_path)
+    combined = pd.concat([provisional, finalized], ignore_index=True)
+    combined["_priority"] = combined["actual_vintage"].map({"D+1": 0, "D+6": 1})
+    combined = (
+        combined.sort_values(["date", "_priority", "published_at"])
+        .groupby("date", as_index=False)
+        .last()
+        .drop(columns="_priority")
+        .sort_values("date")
+        .reset_index(drop=True)
     )
 
-    df = df.rename(columns={"Applicable For": "date", "Value": "demand_mscm"})
-    df["date"] = pd.to_datetime(df["date"])
-
-    # Convert mscm → GWh (same factor you used earlier)
-    df["demand_gwh"] = df["demand_mscm"] * 11.078
-
-    return df[["date", "demand_mscm", "demand_gwh"]]
+    expected = pd.date_range(
+        combined["date"].min(),
+        combined["date"].max(),
+        freq="D",
+    )
+    missing = expected.difference(combined["date"])
+    if not missing.empty:
+        raise ValueError(
+            "Operational demand contains missing gas days: "
+            + ", ".join(day.date().isoformat() for day in missing[:5])
+        )
+    return combined
 
 
 def load_weather(path: str) -> pd.DataFrame:
-    """
-    Load daily temperature data used as a weather demand proxy.
-
-    Central England Temperature is used here as a simple national signal for
-    weather-driven gas demand across the UK transmission system.
-
-    Args:
-        path: Path to the raw weather file.
-
-    Returns:
-        DataFrame with daily dates and mean temperature values.
-    """
+    """Load daily Central England mean temperature observations."""
     df = pd.read_csv(path, sep=r"\s+", engine="python")
     df = df.rename(columns={"Date": "date", "Value": "mean_temp"})
     df["date"] = pd.to_datetime(df["date"])
-
     return df[["date", "mean_temp"]]
 
 
 def load_model_data(demand_path: str, weather_path: str) -> pd.DataFrame:
-    """Load and align demand and weather observations by gas day.
-
-    The returned frame is sorted chronologically and contains only dates for
-    which both finalized demand and observed temperature are available.
-
-    Args:
-        demand_path: Path to the National Gas demand CSV export.
-        weather_path: Path to the Met Office HadCET daily text file.
-
-    Returns:
-        Chronological DataFrame containing demand and mean temperature.
-
-    Raises:
-        ValueError: If the sources have no overlapping dates or contain
-            duplicate aligned gas days.
-    """
+    """Load finalized demand and observed weather for historical modelling."""
     demand = load_demand(demand_path)
     weather = load_weather(weather_path)
     merged = demand.merge(weather, on="date", how="inner").sort_values("date")
@@ -92,5 +126,19 @@ def load_model_data(demand_path: str, weather_path: str) -> pd.DataFrame:
         raise ValueError("Demand and weather data have no overlapping dates")
     if merged["date"].duplicated().any():
         raise ValueError("Aligned model data contains duplicate dates")
+    return merged
 
+
+def load_operational_model_data(
+    finalized_path: str,
+    provisional_path: str,
+    weather_path: str,
+) -> pd.DataFrame:
+    """Load the operational D+1/D+6 overlay aligned with observed weather."""
+    demand = load_operational_demand(finalized_path, provisional_path)
+    weather = load_weather(weather_path)
+    merged = demand.merge(weather, on="date", how="inner").sort_values("date")
+    merged = merged.reset_index(drop=True)
+    if merged.empty:
+        raise ValueError("Operational demand and weather have no overlap")
     return merged

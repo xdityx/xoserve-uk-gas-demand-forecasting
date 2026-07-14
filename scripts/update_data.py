@@ -15,16 +15,18 @@ import pandas as pd
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEMAND_PATH = PROJECT_ROOT / "data" / "raw" / "uk_gas_demand_daily.csv"
+PROVISIONAL_DEMAND_PATH = (
+    PROJECT_ROOT / "data" / "raw" / "uk_gas_demand_provisional_daily.csv"
+)
 WEATHER_PATH = PROJECT_ROOT / "data" / "raw" / "uk_temperature_daily.csv"
 
-NATIONAL_GAS_URL = (
-    "https://api.nationalgas.com/operationaldata/v1/publications/gasday"
-)
+NATIONAL_GAS_URL = "https://api.nationalgas.com/operationaldata/v1/publications/gasday"
 NTS_D6_PUBLICATION_ID = "PUBOB652"
 NTS_D6_NAME = "Demand Actual, NTS, D+6"
+NTS_D1_PUBLICATION_ID = "PUBOB637"
+NTS_D1_NAME = "Demand Actual, NTS, D+1"
 HADCET_URL = (
-    "https://hadleyserver.metoffice.gov.uk/hadobs/hadcet/data/"
-    "meantemp_daily_totals.txt"
+    "https://hadleyserver.metoffice.gov.uk/hadobs/hadcet/data/meantemp_daily_totals.txt"
 )
 USER_AGENT = "xoserve-gas-demand-forecast/1.0"
 
@@ -67,31 +69,38 @@ def _format_timestamp(value: str) -> str:
     return timestamp.strftime("%d/%m/%Y %H:%M:%S")
 
 
-def _records_from_payload(payload: object) -> list[dict]:
+def _records_from_payload(
+    payload: object,
+    publication_id: str = NTS_D6_PUBLICATION_ID,
+    publication_name: str = NTS_D6_NAME,
+) -> list[dict]:
     records = []
     for group in _publication_groups(payload):
-        if group.get("publicationId") != NTS_D6_PUBLICATION_ID:
+        if group.get("publicationId") != publication_id:
             continue
         for item in group.get("publications", []):
             records.append(
                 {
                     "Applicable At": _format_timestamp(item["applicableAt"]),
-                    "Applicable For": pd.Timestamp(
-                        item["applicableFor"]
-                    ).strftime("%d/%m/%Y"),
-                    "Data Item": group.get("publicationName", NTS_D6_NAME),
-                    "Value": float(item["value"]),
-                    "Generated Time": _format_timestamp(
-                        item["generatedTimeStamp"]
+                    "Applicable For": pd.Timestamp(item["applicableFor"]).strftime(
+                        "%d/%m/%Y"
                     ),
+                    "Data Item": group.get("publicationName", publication_name),
+                    "Value": float(item["value"]),
+                    "Generated Time": _format_timestamp(item["generatedTimeStamp"]),
                     "Quality Indicator": item.get("qualityIndicator", ""),
                 }
             )
     return records
 
 
-def fetch_demand_records(from_date: date, to_date: date) -> pd.DataFrame:
-    """Fetch latest D+6 publications in API-friendly monthly chunks."""
+def fetch_demand_records(
+    from_date: date,
+    to_date: date,
+    publication_id: str = NTS_D6_PUBLICATION_ID,
+    publication_name: str = NTS_D6_NAME,
+) -> pd.DataFrame:
+    """Fetch the latest values for one demand publication in monthly chunks."""
     if from_date > to_date:
         return pd.DataFrame()
 
@@ -102,20 +111,29 @@ def fetch_demand_records(from_date: date, to_date: date) -> pd.DataFrame:
         payload = {
             "fromDate": chunk_start.isoformat(),
             "toDate": chunk_end.isoformat(),
-            "publicationIds": [NTS_D6_PUBLICATION_ID],
+            "publicationIds": [publication_id],
             "latestValue": "Y",
         }
         records.extend(
-            _records_from_payload(_fetch_json(NATIONAL_GAS_URL, payload))
+            _records_from_payload(
+                _fetch_json(NATIONAL_GAS_URL, payload),
+                publication_id=publication_id,
+                publication_name=publication_name,
+            )
         )
         chunk_start = chunk_end + timedelta(days=1)
 
     return pd.DataFrame.from_records(records)
 
 
-def refresh_demand(path: Path = DEMAND_PATH, today: date | None = None) -> date:
-    """Upsert recent finalized demand observations into the raw CSV."""
-    today = today or date.today()
+def _refresh_demand_series(
+    path: Path,
+    publication_id: str,
+    publication_name: str,
+    today: date,
+    initial_history_days: int,
+) -> date:
+    """Upsert one National Gas demand publication into a raw CSV."""
     columns = [
         "Applicable At",
         "Applicable For",
@@ -133,25 +151,36 @@ def refresh_demand(path: Path = DEMAND_PATH, today: date | None = None) -> date:
         last_date = existing_dates.max().date()
         refresh_from = max(
             last_date - timedelta(days=14),
-            today - timedelta(days=365 * 5),
+            today - timedelta(days=initial_history_days),
         )
     else:
         existing = pd.DataFrame(columns=columns)
         existing_dates = pd.Series(dtype="datetime64[ns]")
-        refresh_from = today - timedelta(days=365 * 5)
+        refresh_from = today - timedelta(days=initial_history_days)
 
-    fresh = fetch_demand_records(refresh_from, today)
+    fresh = fetch_demand_records(
+        refresh_from,
+        today,
+        publication_id=publication_id,
+        publication_name=publication_name,
+    )
     if fresh.empty:
-        raise RuntimeError("National Gas returned no D+6 demand records")
+        raise RuntimeError(
+            f"National Gas returned no {publication_name} demand records"
+        )
 
     if not existing.empty:
         keep = ~(
-            (existing["Data Item"] == NTS_D6_NAME)
+            (existing["Data Item"] == publication_name)
             & (existing_dates.dt.date >= refresh_from)
         )
         existing = existing.loc[keep, columns]
 
-    combined = pd.concat([existing, fresh[columns]], ignore_index=True)
+    combined = (
+        fresh[columns].copy()
+        if existing.empty
+        else pd.concat([existing, fresh[columns]], ignore_index=True)
+    )
     combined["_sort_date"] = pd.to_datetime(
         combined["Applicable For"], dayfirst=True, errors="raise"
     )
@@ -167,10 +196,37 @@ def refresh_demand(path: Path = DEMAND_PATH, today: date | None = None) -> date:
     combined.to_csv(path, index=False)
 
     latest = pd.to_datetime(
-        combined.loc[combined["Data Item"] == NTS_D6_NAME, "Applicable For"],
+        combined.loc[combined["Data Item"] == publication_name, "Applicable For"],
         dayfirst=True,
     ).max()
     return latest.date()
+
+
+def refresh_demand(path: Path = DEMAND_PATH, today: date | None = None) -> date:
+    """Upsert finalized D+6 demand observations into the raw CSV."""
+    today = today or date.today()
+    return _refresh_demand_series(
+        path=path,
+        publication_id=NTS_D6_PUBLICATION_ID,
+        publication_name=NTS_D6_NAME,
+        today=today,
+        initial_history_days=365 * 5,
+    )
+
+
+def refresh_provisional_demand(
+    path: Path = PROVISIONAL_DEMAND_PATH,
+    today: date | None = None,
+) -> date:
+    """Upsert provisional D+1 demand observations used for live forecasts."""
+    today = today or date.today()
+    return _refresh_demand_series(
+        path=path,
+        publication_id=NTS_D1_PUBLICATION_ID,
+        publication_name=NTS_D1_NAME,
+        today=today,
+        initial_history_days=90,
+    )
 
 
 def refresh_weather(path: Path = WEATHER_PATH) -> date:
@@ -206,8 +262,10 @@ def main() -> None:
         parser.error("--demand-only and --weather-only are mutually exclusive")
 
     if not args.weather_only:
-        demand_through = refresh_demand()
-        print(f"Demand refreshed through {demand_through.isoformat()}")
+        finalized_through = refresh_demand()
+        provisional_through = refresh_provisional_demand()
+        print(f"Finalized demand refreshed through {finalized_through.isoformat()}")
+        print(f"Provisional demand refreshed through {provisional_through.isoformat()}")
     if not args.demand_only:
         weather_through = refresh_weather()
         print(f"Weather refreshed through {weather_through.isoformat()}")

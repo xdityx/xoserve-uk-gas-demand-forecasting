@@ -53,3 +53,18 @@ def test_fetch_demand_records_chunks_long_date_ranges(monkeypatch):
     assert len(calls) == 3
     assert len(result) == 3
     assert calls[0]["publicationIds"] == ["PUBOB652"]
+
+
+def test_records_from_payload_supports_provisional_d1_publication():
+    payload = _payload("2026-07-12")
+    payload[0]["publicationId"] = update_data.NTS_D1_PUBLICATION_ID
+    payload[0]["publicationName"] = update_data.NTS_D1_NAME
+
+    records = update_data._records_from_payload(
+        payload,
+        publication_id=update_data.NTS_D1_PUBLICATION_ID,
+        publication_name=update_data.NTS_D1_NAME,
+    )
+
+    assert records[0]["Applicable For"] == "12/07/2026"
+    assert records[0]["Data Item"] == "Demand Actual, NTS, D+1"

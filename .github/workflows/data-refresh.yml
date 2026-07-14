@@ -2,7 +2,9 @@ name: Refresh forecasting data
 
 on:
   schedule:
+    # 15:30 and 18:30 UK summer time; the second run retries delayed D+1 data.
     - cron: "30 14 * * *"
+    - cron: "30 17 * * *"
   workflow_dispatch:
 
 permissions:
@@ -15,6 +17,7 @@ concurrency:
 jobs:
   refresh:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
 
     steps:
       - name: Checkout repository
@@ -28,26 +31,55 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Refresh authoritative source data
+      - name: Refresh D+1, D+6, and weather source data
         run: python scripts/update_data.py
 
-      - name: Regenerate recursive validation report
-        run: python scripts/validate_oos.py
+      - name: Generate immutable live forecast
+        run: python scripts/run_daily_forecast.py
+
+      - name: Score frozen forecasts against newly published actuals
+        run: python scripts/score_live_forecasts.py
+
+      - name: Regenerate validation when finalized inputs changed
+        shell: bash
+        run: |
+          if git diff --quiet -- data/raw/uk_gas_demand_daily.csv data/raw/uk_temperature_daily.csv; then
+            echo "Finalized validation inputs are unchanged"
+          else
+            python scripts/validate_oos.py
+          fi
 
       - name: Run tests
         run: python -m pytest tests/ -v
 
       - name: Commit refreshed artifacts when changed
+        id: commit
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data/raw/uk_gas_demand_daily.csv
+          git add data/raw/uk_gas_demand_provisional_daily.csv
           git add data/raw/uk_temperature_daily.csv
           git add reports/oos_results.json
+          git add reports/live_forecasts
+          git add reports/live_scores.json
           if git diff --cached --quiet; then
-            echo "No source-data changes"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No forecasting artifact changes"
           else
-            git commit -m "data: refresh demand, weather, and OOS results"
+            git commit -m "data: refresh sources, forecast, and live scores"
             git push
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Trigger Render deploy when configured
+        if: steps.commit.outputs.changed == 'true'
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
+            echo "RENDER_DEPLOY_HOOK_URL is not configured; relying on Render auto-deploy"
+          else
+            curl --fail --silent --show-error --request POST "$RENDER_DEPLOY_HOOK_URL"
           fi
