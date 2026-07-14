@@ -10,13 +10,20 @@ import pandas as pd
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field, model_validator
 
-from src.data_loader import load_demand, load_model_data, load_weather
+from src.data_loader import (
+    load_demand,
+    load_model_data,
+    load_operational_demand,
+    load_operational_model_data,
+    load_provisional_demand,
+    load_weather,
+)
 from src.models import forecast_time_series, forecast_weather_model
 
 
 app = FastAPI(
     title="UK Gas Demand Forecast API",
-    version="2.0.0",
+    version="2.1.0",
     description=(
         "Daily NTS gas-demand forecasts with explicit forecast origins, "
         "uncertainty intervals, and source-data freshness."
@@ -25,8 +32,13 @@ app = FastAPI(
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 DEMAND_PATH = BASE_DIR / "data" / "raw" / "uk_gas_demand_daily.csv"
+PROVISIONAL_DEMAND_PATH = (
+    BASE_DIR / "data" / "raw" / "uk_gas_demand_provisional_daily.csv"
+)
 WEATHER_PATH = BASE_DIR / "data" / "raw" / "uk_temperature_daily.csv"
 REPORT_PATH = BASE_DIR / "reports" / "oos_results.json"
+LIVE_FORECAST_DIR = BASE_DIR / "reports" / "live_forecasts"
+LIVE_SCORE_PATH = BASE_DIR / "reports" / "live_scores.json"
 MAX_DATA_AGE_DAYS = int(os.getenv("MAX_DATA_AGE_DAYS", "14"))
 
 ForecastModel = Literal["arima", "sarima", "linear", "random_forest"]
@@ -75,21 +87,41 @@ class ForecastRequest(BaseModel):
         return self
 
 
-def _load_demand_series() -> pd.Series:
+def _load_operational_demand() -> pd.DataFrame:
     if not DEMAND_PATH.exists():
         raise FileNotFoundError(f"Demand data not found at {DEMAND_PATH}")
-
-    demand_df = load_demand(str(DEMAND_PATH)).sort_values("date")
-    if demand_df.empty:
+    demand = load_operational_demand(
+        str(DEMAND_PATH),
+        str(PROVISIONAL_DEMAND_PATH),
+    ).sort_values("date")
+    if demand.empty:
         raise ValueError("Demand data is empty")
+    return demand
 
-    return demand_df.set_index("date")["demand_gwh"].asfreq("D")
+
+def _load_demand_series() -> pd.Series:
+    demand = _load_operational_demand()
+    return demand.set_index("date")["demand_gwh"].asfreq("D")
 
 
 def _load_model_history() -> pd.DataFrame:
     if not WEATHER_PATH.exists():
         raise FileNotFoundError(f"Weather data not found at {WEATHER_PATH}")
+    if PROVISIONAL_DEMAND_PATH.exists():
+        return load_operational_model_data(
+            str(DEMAND_PATH),
+            str(PROVISIONAL_DEMAND_PATH),
+            str(WEATHER_PATH),
+        )
     return load_model_data(str(DEMAND_PATH), str(WEATHER_PATH))
+
+
+def _latest_json(directory: Path) -> dict[str, object] | None:
+    paths = sorted(directory.glob("*.json")) if directory.exists() else []
+    if not paths:
+        return None
+    with paths[-1].open(encoding="utf-8") as input_file:
+        return json.load(input_file)
 
 
 def _freshness_metadata(
@@ -143,8 +175,18 @@ def health():
     try:
         y = _load_demand_series()
         demand_freshness = _freshness_metadata(y.index[-1])
+        finalized = load_demand(str(DEMAND_PATH))
+        finalized_freshness = _freshness_metadata(finalized["date"].max())
+        if PROVISIONAL_DEMAND_PATH.exists():
+            provisional = load_provisional_demand(str(PROVISIONAL_DEMAND_PATH))
+            provisional_freshness: dict[str, object] = _freshness_metadata(
+                provisional["date"].max()
+            )
+        else:
+            provisional_freshness = {"status": "unavailable"}
         weather = load_weather(str(WEATHER_PATH))
         weather_freshness = _freshness_metadata(weather["date"].max())
+        latest_snapshot = _latest_json(LIVE_FORECAST_DIR)
     except Exception as exc:
         return {"status": "error", "detail": str(exc)}
 
@@ -152,10 +194,26 @@ def health():
         source["status"] == "fresh"
         for source in (demand_freshness, weather_freshness)
     )
+    live_forecast = (
+        {
+            "status": "available",
+            "issue_date": latest_snapshot["issue_date"],
+            "issued_at": latest_snapshot["issued_at"],
+        }
+        if latest_snapshot
+        else {"status": "unavailable"}
+    )
     return {
         "status": "ok" if sources_fresh else "degraded",
         "freshness": demand_freshness,
-        "sources": {"demand": demand_freshness, "weather": weather_freshness},
+        "sources": {
+            "demand": demand_freshness,
+            "operational_demand": demand_freshness,
+            "finalized_demand": finalized_freshness,
+            "provisional_demand": provisional_freshness,
+            "weather": weather_freshness,
+            "live_forecast": live_forecast,
+        },
     }
 
 
@@ -225,3 +283,38 @@ def compare():
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     return report
+
+@app.get("/live/forecast")
+def live_forecast():
+    """Return the latest immutable scheduled forecast snapshot."""
+    try:
+        snapshot = _latest_json(LIVE_FORECAST_DIR)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    if snapshot is None:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "No live snapshot is available. Run "
+                "python scripts/run_daily_forecast.py."
+            ),
+        )
+    return snapshot
+
+
+@app.get("/live/performance")
+def live_performance():
+    """Return frozen-forecast scores against D+1 and D+6 actuals."""
+    if not LIVE_SCORE_PATH.exists():
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "No live score report is available. Run "
+                "python scripts/score_live_forecasts.py."
+            ),
+        )
+    try:
+        with LIVE_SCORE_PATH.open(encoding="utf-8") as report_file:
+            return json.load(report_file)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc

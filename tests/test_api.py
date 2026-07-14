@@ -1,3 +1,4 @@
+import json
 from datetime import date, timedelta
 
 import pandas as pd
@@ -73,6 +74,7 @@ def test_forecast_response_includes_dates_metadata_and_intervals(monkeypatch):
         "upper_gwh": 110.0,
     }
 
+
 def test_forecast_rejects_stale_data_by_default(monkeypatch):
     stale_end = pd.Timestamp(date.today() - timedelta(days=30))
     stale_index = pd.date_range(end=stale_end, periods=30, freq="D")
@@ -84,8 +86,37 @@ def test_forecast_rejects_stale_data_by_default(monkeypatch):
     )
 
     with pytest.raises(HTTPException) as exc_info:
-        api_module.forecast(
-            api_module.ForecastRequest(days=1, model_type="arima")
-        )
+        api_module.forecast(api_module.ForecastRequest(days=1, model_type="arima"))
 
     assert exc_info.value.status_code == 503
+
+
+def test_live_forecast_returns_latest_immutable_snapshot(monkeypatch, tmp_path):
+    forecast_dir = tmp_path / "forecasts"
+    forecast_dir.mkdir()
+    (forecast_dir / "2026-07-13.json").write_text(
+        json.dumps({"issue_date": "2026-07-13", "run_id": "older"}),
+        encoding="utf-8",
+    )
+    (forecast_dir / "2026-07-14.json").write_text(
+        json.dumps({"issue_date": "2026-07-14", "run_id": "latest"}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(api_module, "LIVE_FORECAST_DIR", forecast_dir)
+
+    response = api_module.live_forecast()
+
+    assert response["run_id"] == "latest"
+
+
+def test_live_performance_returns_persisted_score_report(monkeypatch, tmp_path):
+    score_path = tmp_path / "live_scores.json"
+    score_path.write_text(
+        json.dumps({"score_count": 2, "metrics": {}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(api_module, "LIVE_SCORE_PATH", score_path)
+
+    response = api_module.live_performance()
+
+    assert response["score_count"] == 2
