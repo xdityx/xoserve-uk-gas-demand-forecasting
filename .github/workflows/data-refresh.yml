@@ -1,6 +1,16 @@
 name: Refresh forecasting data
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/data-refresh.yml"
+      - "requirements.txt"
+      - "scripts/run_daily_forecast.py"
+      - "scripts/score_live_forecasts.py"
+      - "scripts/update_data.py"
+      - "src/**"
   schedule:
     # 15:30 and 18:30 UK summer time; the second run retries delayed D+1 data.
     - cron: "30 14 * * *"
