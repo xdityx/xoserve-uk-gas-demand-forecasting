@@ -1,9 +1,31 @@
 {
   "metrics": {
     "D+1": {
-      "by_horizon": {},
+      "by_horizon": {
+        "1": {
+          "bias_gwh": -105.4069712511423,
+          "count": 1,
+          "interval_coverage": 1.0,
+          "mae_gwh": 105.4069712511423,
+          "persistence_mae_gwh": 115.89803599999982,
+          "rmse_gwh": 105.4069712511423,
+          "skill_vs_persistence": 0.09051978023905027,
+          "skill_vs_weekly_naive": -1.0962727603302476,
+          "wape_percent": 6.097315035461924,
+          "weekly_naive_mae_gwh": 50.28304200000025
+        }
+      },
       "overall": {
-        "count": 0
+        "bias_gwh": -105.4069712511423,
+        "count": 1,
+        "interval_coverage": 1.0,
+        "mae_gwh": 105.4069712511423,
+        "persistence_mae_gwh": 115.89803599999982,
+        "rmse_gwh": 105.4069712511423,
+        "skill_vs_persistence": 0.09051978023905027,
+        "skill_vs_weekly_naive": -1.0962727603302476,
+        "wape_percent": 6.097315035461924,
+        "weekly_naive_mae_gwh": 50.28304200000025
       }
     },
     "D+6": {
@@ -14,7 +36,28 @@
     }
   },
   "schema_version": 1,
-  "score_count": 0,
-  "scores": [],
-  "updated_at": "2026-07-14T18:56:03.723527+00:00"
+  "score_count": 1,
+  "scores": [
+    {
+      "absolute_error_gwh": 105.4069712511423,
+      "absolute_percentage_error": 6.097315035461924,
+      "actual_gwh": 1728.7440559999998,
+      "actual_published_at": "2026-07-16T11:20:01+00:00",
+      "actual_vintage": "D+1",
+      "error_gwh": -105.4069712511423,
+      "horizon": 1,
+      "interval_hit": true,
+      "interval_width_gwh": 1018.6635045629241,
+      "issued_at": "2026-07-14T18:55:59.270189+00:00",
+      "model_name": "sarima",
+      "model_version": "2a81994329a9985e0b9b8b1aa08cae27118e5ebf",
+      "persistence_absolute_error_gwh": 115.89803599999982,
+      "prediction_gwh": 1623.3370847488575,
+      "run_id": "20260714T185559Z_sarima_2a819943",
+      "squared_error_gwh": 11110.629588339138,
+      "target_date": "2026-07-15",
+      "weekly_naive_absolute_error_gwh": 50.28304200000025
+    }
+  ],
+  "updated_at": "2026-07-16T15:56:47.081950+00:00"
 }
