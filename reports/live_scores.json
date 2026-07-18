@@ -3,41 +3,53 @@
     "D+1": {
       "by_horizon": {
         "1": {
-          "bias_gwh": -180.63077840721303,
-          "count": 2,
+          "bias_gwh": -134.2615943739344,
+          "count": 3,
           "interval_coverage": 1.0,
-          "mae_gwh": 180.63077840721303,
-          "persistence_mae_gwh": 181.59611499999983,
-          "rmse_gwh": 195.66833998133018,
-          "skill_vs_persistence": 0.005315843859252212,
-          "skill_vs_weekly_naive": -5.350675766129357,
-          "wape_percent": 10.251010637137446,
-          "weekly_naive_mae_gwh": 28.442765000000122
+          "mae_gwh": 134.2615943739344,
+          "persistence_mae_gwh": 124.7013533333333,
+          "rmse_gwh": 161.5512063970972,
+          "skill_vs_persistence": -0.07666509452424353,
+          "skill_vs_weekly_naive": -3.402879661187148,
+          "wape_percent": 7.651960763046413,
+          "weekly_naive_mae_gwh": 30.494041333333524
         },
         "2": {
-          "bias_gwh": -172.12552707724967,
+          "bias_gwh": -203.1947367914869,
+          "count": 2,
+          "interval_coverage": 1.0,
+          "mae_gwh": 203.1947367914869,
+          "persistence_mae_gwh": 187.05202999999995,
+          "rmse_gwh": 205.55631065970437,
+          "skill_vs_persistence": -0.08630062336926758,
+          "skill_vs_weekly_naive": -8.864041960521613,
+          "wape_percent": 11.495947143491104,
+          "weekly_naive_mae_gwh": 20.59954100000016
+        },
+        "3": {
+          "bias_gwh": -148.82547629359829,
           "count": 1,
           "interval_coverage": 1.0,
-          "mae_gwh": 172.12552707724967,
-          "persistence_mae_gwh": 182.56543999999985,
-          "rmse_gwh": 172.12552707724967,
-          "skill_vs_persistence": 0.05718449736571274,
-          "skill_vs_weekly_naive": -25.069797790961502,
-          "wape_percent": 9.586968275074376,
-          "weekly_naive_mae_gwh": 6.602487999999994
+          "mae_gwh": 148.82547629359829,
+          "persistence_mae_gwh": 126.80986600000006,
+          "rmse_gwh": 148.82547629359829,
+          "skill_vs_persistence": -0.17361117859392916,
+          "skill_vs_weekly_naive": -2.377156149161553,
+          "wape_percent": 8.554880162869077,
+          "weekly_naive_mae_gwh": 44.068284000000176
         }
       },
       "overall": {
-        "bias_gwh": -177.7956946305586,
-        "count": 3,
+        "bias_gwh": -159.66662216639588,
+        "count": 6,
         "interval_coverage": 1.0,
-        "mae_gwh": 177.7956946305586,
-        "persistence_mae_gwh": 181.91922333333318,
-        "rmse_gwh": 188.1483418420333,
-        "skill_vs_persistence": 0.022666811276007892,
-        "skill_vs_weekly_naive": -7.401381877942287,
-        "wape_percent": 10.026889149025273,
-        "weekly_naive_mae_gwh": 21.162672666666747
+        "mae_gwh": 159.66662216639588,
+        "persistence_mae_gwh": 145.83633099999997,
+        "rmse_gwh": 175.57153953262977,
+        "skill_vs_persistence": -0.09483433292350107,
+        "skill_vs_weekly_naive": -4.420098994335823,
+        "wape_percent": 9.090445363320475,
+        "weekly_naive_mae_gwh": 29.45824833333351
       }
     },
     "D+6": {
@@ -48,7 +60,7 @@
     }
   },
   "schema_version": 1,
-  "score_count": 3,
+  "score_count": 6,
   "scores": [
     {
       "absolute_error_gwh": 105.4069712511423,
@@ -109,7 +121,67 @@
       "squared_error_gwh": 65461.56895375969,
       "target_date": "2026-07-16",
       "weekly_naive_absolute_error_gwh": 6.602487999999994
+    },
+    {
+      "absolute_error_gwh": 148.82547629359829,
+      "absolute_percentage_error": 8.554880162869077,
+      "actual_gwh": 1739.655886,
+      "actual_published_at": "2026-07-18T13:20:01+00:00",
+      "actual_vintage": "D+1",
+      "error_gwh": -148.82547629359829,
+      "horizon": 3,
+      "interval_hit": true,
+      "interval_width_gwh": 1445.0411706466707,
+      "issued_at": "2026-07-14T18:55:59.270189+00:00",
+      "model_name": "sarima",
+      "model_version": "2a81994329a9985e0b9b8b1aa08cae27118e5ebf",
+      "persistence_absolute_error_gwh": 126.80986600000006,
+      "prediction_gwh": 1590.8304097064017,
+      "run_id": "20260714T185559Z_sarima_2a819943",
+      "squared_error_gwh": 22149.022394016385,
+      "target_date": "2026-07-17",
+      "weekly_naive_absolute_error_gwh": 44.068284000000176
+    },
+    {
+      "absolute_error_gwh": 234.2639465057241,
+      "absolute_percentage_error": 13.46610834883952,
+      "actual_gwh": 1739.655886,
+      "actual_published_at": "2026-07-18T13:20:01+00:00",
+      "actual_vintage": "D+1",
+      "error_gwh": -234.2639465057241,
+      "horizon": 2,
+      "interval_hit": true,
+      "interval_width_gwh": 1244.7943498689947,
+      "issued_at": "2026-07-15T16:02:56.743442+00:00",
+      "model_name": "sarima",
+      "model_version": "4ec29c3e12d9fcf3b34217798c565b0fed75d0fc",
+      "persistence_absolute_error_gwh": 191.53862000000004,
+      "prediction_gwh": 1505.391939494276,
+      "run_id": "20260715T160256Z_sarima_4ec29c3e",
+      "squared_error_gwh": 54879.59663243677,
+      "target_date": "2026-07-17",
+      "weekly_naive_absolute_error_gwh": 34.59659400000032
+    },
+    {
+      "absolute_error_gwh": 41.52322630737717,
+      "absolute_percentage_error": 2.38686435872394,
+      "actual_gwh": 1739.655886,
+      "actual_published_at": "2026-07-18T13:20:01+00:00",
+      "actual_vintage": "D+1",
+      "error_gwh": -41.52322630737717,
+      "horizon": 1,
+      "interval_hit": true,
+      "interval_width_gwh": 1109.1904060168054,
+      "issued_at": "2026-07-16T15:56:43.661936+00:00",
+      "model_name": "sarima",
+      "model_version": "6b280b2e97ae3e77f4f7107de7159505e2b3a955",
+      "persistence_absolute_error_gwh": 10.911830000000236,
+      "prediction_gwh": 1698.1326596926228,
+      "run_id": "20260716T155643Z_sarima_6b280b2e",
+      "squared_error_gwh": 1724.1783229736595,
+      "target_date": "2026-07-17",
+      "weekly_naive_absolute_error_gwh": 34.59659400000032
     }
   ],
-  "updated_at": "2026-07-17T15:56:22.595337+00:00"
+  "updated_at": "2026-07-18T15:30:14.957312+00:00"
 }
