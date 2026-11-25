@@ -1,0 +1,153 @@
+{
+  "data": {
+    "finalized_through": "2026-11-19",
+    "operational_through": "2026-11-24",
+    "origin_vintage": "D+1",
+    "provisional_through": "2026-11-24"
+  },
+  "forecasts": [
+    {
+      "horizon": 1,
+      "lower_gwh": 2729.57752332169,
+      "persistence_gwh": 3280.605686,
+      "prediction_gwh": 3273.7055917112816,
+      "target_date": "2026-11-26",
+      "upper_gwh": 3817.833660100873,
+      "weekly_naive_gwh": 2793.716508
+    },
+    {
+      "horizon": 2,
+      "lower_gwh": 2572.4863815256863,
+      "persistence_gwh": 3280.605686,
+      "prediction_gwh": 3236.9729719014613,
+      "target_date": "2026-11-27",
+      "upper_gwh": 3901.4595622772363,
+      "weekly_naive_gwh": 2993.66333
+    },
+    {
+      "horizon": 3,
+      "lower_gwh": 2364.38878730364,
+      "persistence_gwh": 3280.605686,
+      "prediction_gwh": 3135.570904862444,
+      "target_date": "2026-11-28",
+      "upper_gwh": 3906.753022421248,
+      "weekly_naive_gwh": 2841.7064039999996
+    },
+    {
+      "horizon": 4,
+      "lower_gwh": 2268.765658494419,
+      "persistence_gwh": 3280.605686,
+      "prediction_gwh": 3130.7895355157307,
+      "target_date": "2026-11-29",
+      "upper_gwh": 3992.8134125370425,
+      "weekly_naive_gwh": 2902.3030639999997
+    },
+    {
+      "horizon": 5,
+      "lower_gwh": 2320.6301411304103,
+      "persistence_gwh": 3280.605686,
+      "prediction_gwh": 3266.3744735583064,
+      "target_date": "2026-11-30",
+      "upper_gwh": 4212.1188059862025,
+      "weekly_naive_gwh": 3385.226318
+    },
+    {
+      "horizon": 6,
+      "lower_gwh": 2251.2312124381933,
+      "persistence_gwh": 3280.605686,
+      "prediction_gwh": 3272.9557713791287,
+      "target_date": "2026-12-01",
+      "upper_gwh": 4294.680330320064,
+      "weekly_naive_gwh": 3280.605686
+    },
+    {
+      "horizon": 7,
+      "lower_gwh": 2180.1106322521314,
+      "persistence_gwh": 3280.605686,
+      "prediction_gwh": 3273.6535327300576,
+      "target_date": "2026-12-02",
+      "upper_gwh": 4367.196433207984,
+      "weekly_naive_gwh": 2940.788036
+    },
+    {
+      "horizon": 8,
+      "lower_gwh": 2110.9854297362826,
+      "persistence_gwh": 3280.605686,
+      "prediction_gwh": 3271.6402958150866,
+      "target_date": "2026-12-03",
+      "upper_gwh": 4432.2951618938905,
+      "weekly_naive_gwh": 2793.716508
+    },
+    {
+      "horizon": 9,
+      "lower_gwh": 2016.379713136092,
+      "persistence_gwh": 3280.605686,
+      "prediction_gwh": 3240.632769019716,
+      "target_date": "2026-12-04",
+      "upper_gwh": 4464.88582490334,
+      "weekly_naive_gwh": 2993.66333
+    },
+    {
+      "horizon": 10,
+      "lower_gwh": 1851.179312562865,
+      "persistence_gwh": 3280.605686,
+      "prediction_gwh": 3135.7911622227352,
+      "target_date": "2026-12-05",
+      "upper_gwh": 4420.403011882605,
+      "weekly_naive_gwh": 2841.7064039999996
+    },
+    {
+      "horizon": 11,
+      "lower_gwh": 1790.8961479955403,
+      "persistence_gwh": 3280.605686,
+      "prediction_gwh": 3133.2117396989347,
+      "target_date": "2026-12-06",
+      "upper_gwh": 4475.527331402329,
+      "weekly_naive_gwh": 2902.3030639999997
+    },
+    {
+      "horizon": 12,
+      "lower_gwh": 1869.696809493713,
+      "persistence_gwh": 3280.605686,
+      "prediction_gwh": 3267.302132068491,
+      "target_date": "2026-12-07",
+      "upper_gwh": 4664.907454643269,
+      "weekly_naive_gwh": 3385.226318
+    },
+    {
+      "horizon": 13,
+      "lower_gwh": 1823.9167188732847,
+      "persistence_gwh": 3280.605686,
+      "prediction_gwh": 3274.7257501061,
+      "target_date": "2026-12-08",
+      "upper_gwh": 4725.534781338915,
+      "weekly_naive_gwh": 3280.605686
+    },
+    {
+      "horizon": 14,
+      "lower_gwh": 1772.3538714741505,
+      "persistence_gwh": 3280.605686,
+      "prediction_gwh": 3274.8955121026106,
+      "target_date": "2026-12-09",
+      "upper_gwh": 4777.4371527310705,
+      "weekly_naive_gwh": 2940.788036
+    }
+  ],
+  "interval": {
+    "level": 0.95,
+    "method": "statsmodels_prediction_interval"
+  },
+  "issue_date": "2026-11-25",
+  "issued_at": "2026-11-25T23:13:10.762639+00:00",
+  "model": {
+    "name": "sarima",
+    "version": "ddba998c4f00c3f4842494149d2fe5c45af6fc90"
+  },
+  "policy": {
+    "bridge_days": 1,
+    "first_target": "next_gas_day",
+    "horizon_days": 14
+  },
+  "run_id": "20261125T231310Z_sarima_ddba998c",
+  "schema_version": 1
+}
